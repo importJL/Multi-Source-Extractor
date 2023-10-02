@@ -1,7 +1,7 @@
 from datetime import datetime
 import bs4
 
-def locate_elements(soup: bs4.BeautifulSoup, element_search: str, method: str):
+def locate_elements(soup: bs4.BeautifulSoup, element_search: str, method: str, **kwargs):
     '''
     Identifies web elements from given BeautifulSoup object for further data extraction.
     
@@ -12,11 +12,11 @@ def locate_elements(soup: bs4.BeautifulSoup, element_search: str, method: str):
     '''
     match method:
         case 'select':
-            return soup.select(element_search)
+            return soup.select(element_search, **kwargs)
         case 'find':
-            return soup.find(element_search)
+            return soup.find(element_search, **kwargs)
         
-def process_text(soup: bs4.BeautifulSoup, nature: str, method: str | None = None, element_search: str | None = None, translator: dict | None = None):
+def process_text(soup: bs4.BeautifulSoup, nature: str, method: str | None = None, element_search: str | None = None, translator: dict | None = None, **kwargs):
     '''
     Executes text processing based on element identification and text extraction of scraped website.
     
@@ -29,11 +29,14 @@ def process_text(soup: bs4.BeautifulSoup, nature: str, method: str | None = None
     '''
     match nature:
         case 'title':
-            soup_title = locate_elements(soup, element_search, method)
+            soup_title = locate_elements(soup, element_search, method, **kwargs)
             return [e.text for e in soup_title]
         case 'summary':
-            soup_summary = locate_elements(soup, element_search, method)
-            return [e.text.translate(translator).split('—')[-1].strip() for e in soup_summary]
+            soup_summary = locate_elements(soup, element_search, method, **kwargs)
+            if translator is not None:
+                return [e.text.translate(translator).split('—')[-1].strip() for e in soup_summary]
+            else:
+                return [e.text for e in soup_summary]
         case 'story':
             return soup.text.translate(translator)
         case _:
