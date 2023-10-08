@@ -1,6 +1,7 @@
 import pandas as pd
 import multiextractor
 from multiextractor import SciDailyConstants as sci
+from multiextractor import DBConstLoader
 
 def gnews_extract() -> pd.DataFrame:
     _, articles = multiextractor.extract_news()
@@ -15,8 +16,9 @@ def gnews_transform(df_articles: pd.DataFrame) -> pd.DataFrame:
     return df_articles
 
 def gnews_load(df_articles: pd.DataFrame) -> None:
-    multiextractor.sql_create_table(df_articles, unique_col='title')
-    multiextractor.sql_insert_articles(df_articles, constraint_col='title')
+    conn_params = DBConstLoader('gnews')
+    multiextractor.sql_create_table(df_articles, unique_col='title', conn_params=conn_params)
+    multiextractor.sql_insert_articles(df_articles, constraint_col='title', conn_params=conn_params)
 
 def scidaily_extract() -> tuple[list]:
     soup_heroes = multiextractor.extract_content(sci.SCI_URL_FULL, 'div[id*="heroes"]', 'select')[0]
@@ -65,7 +67,8 @@ def scidaily_transform(
     return df_articles_2
 
 def scidaily_load(df_articles_2: pd.DataFrame) -> None:
-    multiextractor.sql_insert_articles(df_articles_2, constraint_col='title')
+    conn_params = DBConstLoader('scidaily')
+    multiextractor.sql_insert_articles(df_articles_2, constraint_col='title', conn_params=conn_params)
 
 def alphavan_extract(ticker: str) -> tuple[dict | list[dict]]:
     ticker_prices = multiextractor.get_alphavan_data('daily_price', tickers=ticker)
@@ -107,8 +110,9 @@ def alphavan_load(
         df_stock_prices: tuple[pd.DataFrame | None]
     ) -> None:
     
-    client = multiextractor.mongodb_connection()
-    db_name = multiextractor.mongodb_get_db(client)
+    conn_params = DBConstLoader('alphavan')
+    client = multiextractor.mongodb_connection(conn_params)
+    db_name = multiextractor.mongodb_get_db(client, conn_params)
 
     query_result = multiextractor.check_doc_presence(db_name, 'alphav_sentiment_reference', 'sentiment', {'$in': ['Bearish', 'Somewhat-Bearish', 'Neutral', 'Somewhat_Bullish', 'Bullish']})
     if len(list(query_result)) == 0:
