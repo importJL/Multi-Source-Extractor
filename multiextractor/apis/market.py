@@ -3,16 +3,11 @@ import requests
 import json
 import os
 from datetime import datetime, timedelta
+from multiextractor.constants import OPTIONS
 
 load_dotenv()
 
 ALPHAVANTAGE_KEY = os.getenv('ALPHAVANTAGE_API')
-OPTIONS = {
-    'daily_price': 'TIME_SERIES_DAILY',
-    'news_sentiment': 'NEWS_SENTIMENT',
-    'treasury_yield': 'TREASURY_YIELD',
-    'inflation': 'INFLATION'
-}
 
 URL_BASE = 'https://www.alphavantage.co/query?function={FUNCTION}{QUERY_PARAMS}&apikey={KEY}'
 

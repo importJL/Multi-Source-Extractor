@@ -90,7 +90,9 @@ async def populate_data_struct(executor: ProcessPoolExecutor, entry: object, bod
         'publishedTime': time(entry.published_parsed.tm_hour, entry.published_parsed.tm_min, entry.published_parsed.tm_sec)
     }   
 
-async def create_entry_from_rss(url: str, executor: ProcessPoolExecutor, body_attrs: dict[str, str] | None = None, list_attrs: dict[str, str] | None = None) -> pd.DataFrame:
+async def create_entry_from_rss(url: str, pool_num: int, body_attrs: dict[str, str] | None = None, list_attrs: dict[str, str] | None = None) -> pd.DataFrame:
+    executor = ProcessPoolExecutor(pool_num)
+    
     _feeds = feedparser.parse(url)
     _entry_list = await asyncio.gather(*(populate_data_struct(executor, _entry, body_attrs, list_attrs) for _entry in _feeds.entries))
     _df = pd.DataFrame(_entry_list)

@@ -2,10 +2,12 @@ import pymongo
 import spacy
 from dotenv import load_dotenv
 import os
+from google.cloud import bigquery
+from google.oauth2.service_account import Credentials
 
 load_dotenv()
 
-CATEGORY_MAP = {
+CATEGORY = {
     'general': 'general',
     'world': 'world',
     'nation': 'nation',
@@ -17,18 +19,66 @@ CATEGORY_MAP = {
     'health': 'health'
 }
 
-LANGUAGE_MAP = {
+OPTIONS = {
+    'daily_price': 'TIME_SERIES_DAILY',
+    'news_sentiment': 'NEWS_SENTIMENT',
+    'treasury_yield': 'TREASURY_YIELD',
+    'inflation': 'INFLATION'
+}
+
+LANGUAGE = {
     'Chinese': 'zh',
     'English': 'en'
 }
 
-COUNTRY_MAP = {
+COUNTRY = {
     'Australia': 'au',
     'Brazil': 'br',
     'Canada': 'ca',
     'Hong Kong': 'hk',
     'United Kingdom': 'gb',
     'United States': 'us'
+}
+
+METRICS = {
+    'aqius': 'AQI_US_STANDARD',
+    'aqicn': 'AQI_CHINA_STANDARD',
+    'mainus': 'MAIN_POLLUTANT_US',
+    'maincn': 'MAIN_POLLUTANT_CHINA',
+    'tp': 'TEMPERATURE_CELSIUS',
+    'tp_min': 'MIN_TEMPERATURE_CELSIUS',
+    'pr': 'ATMOSPHERIC_PRESSURE_HPA',
+    'hu': 'HUMIDITY_PERC',
+    'ws': 'WIND_SPEED_METRES_PER_SEC',
+    'wd': 'WIND_DIRECTION_ANGLE',
+    'ic': 'WEATHER_ICON_CODE',
+    'p2': 'PM2.5_UGM3',
+    'p1': 'PM10_UGM3',
+    'o3': 'OZONE_PPB',
+    'n2': 'NITROGEN_DIOXIDE_PPB',
+    's2': 'SULFUR_DIOXIDE_PPB',
+    'co': 'CARBON_MONOXIDE_PPM'
+}
+
+MAIN_POLLUTANT = {
+    'conc': 'CONCENTRATION',
+    'aqius': 'AQI_US_STANDARD',
+    'aqicn': 'AQI_CHINA_STANDARD'
+}
+
+ICON_CODE = {
+    '01d': 'CLEAR_SKY_DAY',
+    '01n': 'CLEAR_SKY_NIGHT',
+    '02d': 'FEW_CLOUDS_DAY',
+    '02n': 'FEW_CLOUDS_NIGHT',
+    '03d': 'SCATTERED_CLOUDS',
+    '04d': 'BROKEN_CLOUDS',
+    '09d': 'SHOWER_RAIN',
+    '10d': 'RAIN_DAY',
+    '10n': 'RAIN_NIGHT',
+    '11d': 'THUNDERSTORM',
+    '13d': 'SNOW',
+    '50d': 'MIST'
 }
 
 TEXT = pymongo.TEXT
@@ -60,7 +110,7 @@ class DBConstLoader:
         self.DB_HOST = None
         self.data_name = data_name
         self._get_params()
-        self.conn_str = self._build_conn_str()
+        self.conn_str = self._build_conn_path()
         
     def _get_params(self):
         match self.data_name.lower():
@@ -76,19 +126,25 @@ class DBConstLoader:
                 self.DB_USER = os.getenv('ATLAS_USER')
                 self.DB_KEY = os.getenv('ATLAS_KEY')
                 self.DB_NAME = os.getenv('ATLAS_DB')
-            case ('trade_econ' | 'cnbc'):
+            case 'cnbc':
                 self.DB_USER = os.getenv('COCKROACH_USER')
                 self.DB_KEY = os.getenv('COCKROACH_PW')
                 self.DB_HOST = os.getenv('COCKROACH_HOST')
                 self.DB_PORT = os.getenv('COCKROACH_PORT')
                 self.DB_NAME = os.getenv('COCKROACH_DB')
+            case 'trade_econ':
+                self.DB_USER = os.getenv('REDIS_USER')
+                self.DB_KEY = os.getenv('REDIS_KEY')
+                self.DB_HOST = os.getenv('REDIS_HOST')
+                self.DB_PORT = os.getenv('REDIS_PORT')
+                self.DB_NAME = os.getenv('REDIS_DB')
             case _:
                 return Exception('No paramaters found for connection.')
     
-    def _build_conn_str(self):
+    def _build_conn_path(self):
         match self.data_name.lower():
             case 'gnews' | 'scidaily':
-                _str = self._NEON_CONN_STR.format(
+                _path = self._NEON_CONN_STR.format(
                     DB_USER=self.DB_USER,
                     DB_KEY=self.DB_KEY,
                     COMPUTE_NAME=self.COMPUTE_NAME,
@@ -96,13 +152,13 @@ class DBConstLoader:
                     DB_NAME=self.DB_NAME,
                 )
             case 'alphavan':
-                _str = self._MONGO_CONN_STR.format(
+                _path = self._MONGO_CONN_STR.format(
                     DB_USER=self.DB_USER,
                     DB_KEY=self.DB_KEY,
                     DB_NAME=self.DB_NAME
                 )
             case 'trade_econ' | 'cnbc':
-                _str = self._COCKROACH_CONN_STR.format(
+                _path = self._COCKROACH_CONN_STR.format(
                     DB_USER=self.DB_USER,
                     DB_KEY=self.DB_KEY,
                     DB_HOST=self.DB_HOST,
@@ -111,4 +167,33 @@ class DBConstLoader:
                 )
             case _:
                 raise Exception('Connection string cannot be built.')
-        return _str
+        return _path
+    
+class CloudDBConnect:
+    '''
+    Client initializer for GCP BigQuery.
+    '''
+    def __init__(self, key_path: str | None = None):
+        self.FROM_ENV = False
+        if key_path is None: self.FROM_ENV = True
+        
+        self.DB_KEY = None
+        self.KEY_PATH = key_path
+        self._get_params()
+        self.client = self._build_conn()
+        
+    def _get_params(self):
+        match self.data_name.lower():
+            case ('iqair' | 'openweather'):
+                if self.FROM_ENV:
+                    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = os.environ['GCLOUD_SERVICE_KEY_PATH']
+            case _:
+                return Exception('No paramaters found for connection.')
+            
+    def _build_conn(self):
+        if self.KEY_PATH is not None:
+            _credentials = Credentials.from_service_account_file(self.KEY_PATH, scopes=["https://www.googleapis.com/auth/cloud-platform"])
+            _client = bigquery.Client(project=_credentials.project_id, credentials=_credentials)
+        else:
+            _client = bigquery.Client()
+        return _client
